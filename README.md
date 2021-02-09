@@ -7,7 +7,7 @@ Script to download the PDFs of an Unpaywall snapshot, available [here](https://u
 ```bash
 pip3 install -r requirements.txt
 
-python download_unpaywall.py --snapshot <extracted snapshot from link above> --dl_folder D:\\Data\pdfs
+python3 download_unpaywall.py --snapshot <extracted snapshot from link above> --dl_folder D:\\Data\pdfs
 ```
 
 ## Notes
