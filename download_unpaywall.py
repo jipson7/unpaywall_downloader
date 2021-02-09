@@ -28,7 +28,7 @@ os.makedirs(PDF_SAVE_FOLDER, exist_ok=True)
 
 try:
     with open(CHECKPOINT_FILE) as cf:
-        already_downloaded = set(cf.readlines())
+        already_downloaded = set([x.strip() for x in cf.readlines()])
 except FileNotFoundError:
     already_downloaded = set()
 
@@ -48,7 +48,7 @@ with open(METADATA_PATH, encoding='utf-8') as mf:
     with open(CHECKPOINT_FILE, "a") as cf:
         for line in tqdm(mf, unit=" pdfs", desc="Downloading PDFs"):
             item = json.loads(line)
-            doi = item["doi"].replace("/", "-")
+            doi = item["doi"].replace("/", "-").strip()
             if doi in already_downloaded:
                 continue
             cf.write(doi + "\n")
