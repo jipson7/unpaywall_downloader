@@ -21,12 +21,12 @@ class ThreadPoolExecutorWithQueueSizeLimit(ThreadPoolExecutor):
 
 def download(args):
     pdf_save_folder = os.path.join(args.dl_folder, "pdfs/")
-    download_checkpoint = os.path.join(args.dl_folder, "downloaded.txt")
+    checkpoint = os.path.join(args.dl_folder, "downloaded.txt")
     os.makedirs(args.dl_folder, exist_ok=True)
     os.makedirs(pdf_save_folder, exist_ok=True)
 
     try:
-        with open(download_checkpoint) as cf:
+        with open(checkpoint) as cf:
             already_downloaded = set([x.strip() for x in cf.readlines()])
     except FileNotFoundError:
         already_downloaded = set()
@@ -41,8 +41,8 @@ def download(args):
         with open(pdf_filename, 'wb') as f:
             f.write(response.content)
 
-    with open(args.checkpoint, encoding='utf-8') as mf:
-        with open(download_checkpoint, "a") as cf:
+    with open(args.snapshot, encoding='utf-8') as mf:
+        with open(checkpoint, "a") as cf:
             for line in tqdm(mf, unit=" pdfs", desc="Downloading PDFs"):
                 item = json.loads(line)
                 doi = item["doi"].replace("/", "-").strip()
@@ -60,6 +60,6 @@ def download(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Download PDFs from snapshot')
-    parser.add_argument('--checkpoint', help='Unpaywall checkpoint file', type=str, required=True)
+    parser.add_argument('--snapshot', help='Unpaywall snapshot file', type=str, required=True)
     parser.add_argument('--dl_folder', help='Path to download files to', type=str, default="./data")
     download(parser.parse_args())
