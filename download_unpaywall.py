@@ -38,8 +38,9 @@ def download(args):
     def save_pdf(pdf_url, doi):
         response = requests.get(pdf_url, timeout=10, allow_redirects=True)
         pdf_filename = os.path.join(pdf_save_folder, doi + ".pdf")
-        with open(pdf_filename, 'wb') as f:
-            f.write(response.content)
+        if response.ok:
+            with open(pdf_filename, 'wb') as f:
+                f.write(response.content)
 
     with open(args.snapshot, encoding='utf-8') as mf:
         with open(checkpoint, "a") as cf:
