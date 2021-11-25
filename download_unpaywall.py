@@ -1,62 +1,55 @@
 import json
-from queue import Queue
-from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import cpu_count
+from multiprocessing import Pool, cpu_count
 import requests
 import argparse
 import os
 from tqdm import tqdm
+import webdataset as wds
+
+pdfs_per_shard = 1000  # TODO increase this
 
 
-class ThreadPoolExecutorWithQueueSizeLimit(ThreadPoolExecutor):
-    def __init__(self, maxsize=100, *args, **kwargs):
-        super(ThreadPoolExecutorWithQueueSizeLimit, self).__init__(*args, **kwargs)
-        self._work_queue = Queue(maxsize=maxsize)
-
-    def submit(self, fn, *args, **kwargs):
-        if len(self._work_queue.queue) > 100:
-            print(len(self._work_queue.queue))
-        super(ThreadPoolExecutorWithQueueSizeLimit, self).submit(fn, *args, **kwargs)
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 
 
 def download(args):
-    pdf_save_folder = os.path.join(args.dl_folder, "pdfs/")
-    checkpoint = os.path.join(args.dl_folder, "downloaded.txt")
     os.makedirs(args.dl_folder, exist_ok=True)
-    os.makedirs(pdf_save_folder, exist_ok=True)
 
-    try:
-        with open(checkpoint) as cf:
-            already_downloaded = set([x.strip() for x in cf.readlines()])
-    except FileNotFoundError:
-        already_downloaded = set()
+    def download_chunk(chunk, shard_name):
+        sink = wds.TarWriter(shard_name)
+        for line in tqdm(chunk, unit=" pdfs", desc=f"Downloading PDFs to {shard_name}"):
+            item = json.loads(line)
+            doi = item["doi"]
+            if item["is_oa"]:
+                pdf_url = item["best_oa_location"]["url_for_pdf"]
+                if pdf_url:
+                    if "arxiv.org" in pdf_url:
+                        # Use export of arxiv so they dont block our IP
+                        pdf_url = pdf_url.replace("arxiv.org", "export.arxiv.org")
+                    response = requests.get(pdf_url, timeout=10, allow_redirects=True)
+                    if response.ok:
+                        sink.write({
+                            "__key__": doi,
+                            "pdf": response,
+                            "json": item
+                        })
 
-    thread_count = cpu_count() * 8
+    with Pool(cpu_count()) as pool:
+        with open(args.snapshot, encoding='utf-8') as mf:
+            chunk = []
+            chunk_idx = 0
+            for line in mf:
+                chunk.append(line)
+                if len(chunk) == pdfs_per_shard:
+                    pool.apply_async(download_chunk, args=(chunk, os.path.join(args.dl_folder, f"{chunk_idx:06}.tar")))
+                    chunk = []
+                    chunk_idx += 1
+            pool.close()
+            pool.join()
 
-    executor = ThreadPoolExecutorWithQueueSizeLimit(max_workers=thread_count, maxsize=thread_count)
-
-    def save_pdf(pdf_url, doi):
-        response = requests.get(pdf_url, timeout=10, allow_redirects=True)
-        pdf_filename = os.path.join(pdf_save_folder, doi + ".pdf")
-        if response.ok:
-            with open(pdf_filename, 'wb') as f:
-                f.write(response.content)
-
-    with open(args.snapshot, encoding='utf-8') as mf:
-        with open(checkpoint, "a") as cf:
-            for line in tqdm(mf, unit=" pdfs", desc="Downloading PDFs"):
-                item = json.loads(line)
-                doi = item["doi"].replace("/", "-").strip()
-                if doi in already_downloaded:
-                    continue
-                cf.write(doi + "\n")
-                if item["is_oa"]:
-                    pdf_url = item["best_oa_location"]["url_for_pdf"]
-                    if pdf_url:
-                        if "arxiv.org" in pdf_url:
-                            # Use export of arxiv so they dont block our IP
-                            pdf_url = pdf_url.replace("arxiv.org", "export.arxiv.org")
-                        executor.submit(save_pdf, pdf_url, doi)
 
 
 if __name__ == "__main__":
